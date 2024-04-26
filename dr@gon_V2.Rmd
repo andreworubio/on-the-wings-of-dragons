@@ -1,0 +1,321 @@
+---
+title: "dr@gonfly"
+author: "Andrew O. Rubio"
+date: "1/7/2023"
+output: html_document
+---
+
+```{r}
+#R.Version()
+library(ggthemes)
+library(RColorBrewer)
+library(extrafont)
+library(grid)
+library(here)
+library(tidyverse)
+library(ggrepel)
+library(cowplot)
+library(ggbeeswarm)
+library(effects)
+```
+
+#inputing wing length data
+```{r}
+dragon <- read.csv("dragon_data.csv")
+
+new_dragon <- data.frame(dragon$Length_right_forewing, dragon$Length_left_forewing, dragon$Body_length, dragon$Length_right_hindwing, dragon$Length_left_hindwing, dragon$Area_right_forewing, dragon$Area_left_forewing, dragon$Area_right_hindwing, dragon$Area_left_hindwing, dragon$Folder_ID, dragon$Sex)
+
+#body weight = body length to the third power
+new_dragon$estimated_weight <- (new_dragon$dragon.Body_length) ^ 3
+
+new_dragon
+```
+
+```{r}
+wing_loading <- new_dragon[-c(7,9,13,16,19),]
+
+wing_loading$wing_loading_estimated_weight <- wing_loading$estimated_weight / (wing_loading$dragon.Area_left_forewing + wing_loading$dragon.Area_right_forewing + wing_loading$dragon.Area_left_hindwing + wing_loading$dragon.Area_right_hindwing)
+
+wing_loading$dragon.Sex = as.factor(wing_loading$dragon.Sex)
+str(wing_loading)
+
+setDT(wing_loading)
+
+mean_wing_loading <- wing_loading[, (mean=mean(wing_loading_estimated_weight)), by=dragon.Sex]
+mean_wing_loading
+
+sd_wing_loading <- wing_loading[, (sd=sd(wing_loading_estimated_weight)), by=dragon.Sex]
+sd_wing_loading
+
+#ANCOVA
+wing_loading.model <- lm(log(wing_loading_estimated_weight) ~ log(dragon.Body_length) + dragon.Sex + log(dragon.Body_length):dragon.Sex, data = wing_loading)
+anova(wing_loading.model)
+
+#violin plot: fore wing loading
+e <- ggplot(aes(x = log(dragon.Body_length), y = log(wing_loading_estimated_weight), color =  dragon.Sex, shape = dragon.Sex), data =wing_loading) + geom_smooth(method='lm', formula = y~x, se = TRUE) +
+  scale_color_manual(values=c("#84B6BA", "#4880b8")) + 
+  labs(x = "Body length", y = "Wing loading") +
+  scale_size_manual(values=c(1, 1.5)) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) + 
+  guides(fill = TRUE) +
+  theme_minimal(8)+ geom_quasirandom(cex=1) +
+  scale_linetype_manual(values = c("51", "solid")) +
+  theme(legend.position="") + theme(text = element_text(size=14))
+
+e + theme(axis.title.x = element_text(margin = margin(t = .2, unit = "in"))) + 
+  theme(axis.title.y = element_text(margin = margin(r = .2, unit = "in"))) + 
+  geom_point(size=2)
+
+ggsave("wing_loading_linear_regression.jpg", width = 6, height = 6, path = "figures/")
+```
+
+#Wing area
+```{r}
+area_dragon <- new_dragon[-c(7,9,13,16,19),]
+
+area_dragon$dragon.Sex = as.factor(area_dragon$dragon.Sex)
+str(area_dragon)
+
+area_dragon$mean_forewing_area <- (area_dragon$dragon.Area_right_forewing  + area_dragon$dragon.Area_left_forewing) / 2
+forewing_area_glm = glm(mean_forewing_area ~ dragon.Body_length, data = area_dragon)
+forewing_area_residuals = forewing_area_glm$residuals
+area_dragon = mutate(area_dragon, forewing_area_residuals = forewing_area_residuals)
+
+area_dragon$mean_hindwing_area <- (area_dragon$dragon.Area_right_hindwing + area_dragon$dragon.Area_left_hindwing) / 2
+hindwing_area_glm = glm(mean_hindwing_area ~ dragon.Body_length, data = area_dragon)
+hindwing_area_residuals = hindwing_area_glm$residuals
+area_dragon = mutate(area_dragon, hindwing_area_residuals = hindwing_area_residuals)
+
+setDT(area_dragon)
+
+#fore wing area: mean and SD
+mean_forewingarea <- area_dragon[, (mean=mean(mean_forewing_area)), by=dragon.Sex]
+mean_forewingarea
+
+sd_forewingarea <- area_dragon[, (sd=sd(mean_forewing_area)), by=dragon.Sex]
+sd_forewingarea
+
+#hind wing area: mean and SD
+mean_hindwingarea <- area_dragon[, (mean=mean(mean_hindwing_area)), by=dragon.Sex]
+mean_hindwingarea
+
+sd_hindwingarea <- area_dragon[, (sd=sd(mean_hindwing_area)), by=dragon.Sex]
+sd_hindwingarea
+
+#ANOVA wing area
+wing_area.model <- lm(log(mean_forewing_area) ~ log(dragon.Body_length) + dragon.Sex + log(dragon.Body_length):dragon.Sex, data = area_dragon)
+anova(wing_area.model)
+
+#Figure hind wing area
+d <- ggplot(aes(x = log(dragon.Body_length), y = log(mean_forewing_area), color =  dragon.Sex, shape = dragon.Sex), data =area_dragon) + geom_smooth(method='lm', formula = y~x, se = TRUE) +
+  scale_color_manual(values=c("#84B6BA", "#4880b8")) + 
+  labs(x = "Body length", y = "Fore wing area") +
+  scale_size_manual(values=c(1, 1.5)) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) + 
+  guides(fill = TRUE) +
+  theme_minimal(8)+ geom_quasirandom(cex=1) +
+  scale_linetype_manual(values = c("51", "solid")) +
+  theme(legend.position="") + theme(text = element_text(size=14))
+
+d + theme(axis.title.x = element_text(margin = margin(t = .2, unit = "in"))) + 
+  theme(axis.title.y = element_text(margin = margin(r = .2, unit = "in"))) + 
+  geom_point(size=2)
+ 
+
+ggsave("forewing_area_linear_regression.pdf", width = 4, height = 4, path = "figures/")
+
+#HINDWING
+#ANOVA wing area
+wing_area.model <- lm(log(mean_hindwing_area) ~ log(dragon.Body_length) + dragon.Sex + log(dragon.Body_length):dragon.Sex, data = area_dragon)
+anova(wing_area.model)
+
+#Figure hind wing area
+e <- ggplot(aes(x = log(dragon.Body_length), y = log(mean_hindwing_area), color =  dragon.Sex, shape = dragon.Sex), data =area_dragon) + geom_smooth(method='lm', formula = y~x, se = TRUE) +
+  scale_color_manual(values=c("#84B6BA", "#4880b8")) + 
+  labs(x = "Body length", y = "Hind wing area") +
+  scale_size_manual(values=c(1, 1.5)) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) + 
+  guides(fill = TRUE) +
+  theme_minimal(8)+ geom_quasirandom(cex=1) +
+  scale_linetype_manual(values = c("51", "solid")) +
+  theme(legend.position="") + theme(text = element_text(size=14))
+
+e + theme(axis.title.x = element_text(margin = margin(t = .2, unit = "in"))) + 
+  theme(axis.title.y = element_text(margin = margin(r = .2, unit = "in"))) + 
+  geom_point(size=2)
+
+ggsave("hindwing_area_linear_regression.pdf", width = 4, height = 4, path = "figures/")
+```
+
+
+#fore & hind wing length
+```{r}
+#getting rid of female_8 (2.22.8) due to major wing damage.
+length_new_dragon <- new_dragon[-7,]
+length_new_dragon$dragon.Sex = as.factor(length_new_dragon$dragon.Sex)
+str(length_new_dragon)
+
+#mean forewing length
+length_new_dragon$mean_forewing_length <- (length_new_dragon$dragon.Length_right_forewing  + length_new_dragon$dragon.Length_left_forewing) / 2
+forewing_length_glm = glm(mean_forewing_length ~ dragon.Body_length, data = length_new_dragon)
+forewing_length_residuals = forewing_length_glm$residuals
+length_new_dragon = mutate(length_new_dragon, forewing_length_residuals = forewing_length_residuals)
+
+#mean hindwing length
+length_new_dragon$mean_hindwing_length <- (length_new_dragon$dragon.Length_right_hindwing + length_new_dragon$dragon.Length_left_hindwing) / 2
+hindwing_length_glm = glm(mean_hindwing_length ~ dragon.Body_length, data = length_new_dragon)
+hindwing_length_residuals = hindwing_length_glm$residuals
+length_new_dragon = mutate(length_new_dragon, hindwing_length_residuals = hindwing_length_residuals)
+
+setDT(length_new_dragon)
+
+#body length: mean and SD
+mean_bod_length <- length_new_dragon[, (mean=mean(dragon.Body_length)), by=dragon.Sex]
+mean_bod_length
+
+sd_bod_length <- length_new_dragon[, (sd=sd(dragon.Body_length)), by=dragon.Sex]
+sd_bod_length
+
+#fore wing: mean and SD
+mean_fw_length <- length_new_dragon[, (mean=mean(mean_forewing_length)), by=dragon.Sex]
+mean_fw_length
+
+sd_fw_length <- length_new_dragon[, (sd=sd(mean_forewing_length)), by=dragon.Sex]
+sd_fw_length
+
+#hindwing: mean and SD
+mean_hw_length <- length_new_dragon[, (mean=mean(mean_hindwing_length)), by=dragon.Sex]
+mean_hw_length
+
+sd_hw_length <- length_new_dragon[, (sd=sd(mean_hindwing_length)), by=dragon.Sex]
+sd_hw_length
+
+#ANCOVA: forewing
+forewing_length.model <- lm(log(mean_forewing_length) ~ log(dragon.Body_length) + dragon.Sex + log(dragon.Body_length):dragon.Sex, data = length_new_dragon)
+anova(forewing_length.model)
+
+#Figure: forewing
+b <- ggplot(aes(x = log(dragon.Body_length), y = log(mean_forewing_length), color =  dragon.Sex, shape = dragon.Sex), data =length_new_dragon) + geom_smooth(method='lm', formula = y~x, se = TRUE) +
+  scale_color_manual(values=c("#84B6BA", "#4880b8")) + 
+  labs(x = "Body length", y = "Fore wing length") +
+  scale_size_manual(values=c(1, 1.5)) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) + 
+  guides(fill = TRUE) +
+  theme_minimal(8)+ geom_quasirandom(cex=1) +
+  scale_linetype_manual(values = c("51", "solid")) +
+  theme(legend.position="") + theme(text = element_text(size=14))
+
+b + theme(axis.title.x = element_text(margin = margin(t = .2, unit = "in"))) + 
+  theme(axis.title.y = element_text(margin = margin(r = .2, unit = "in"))) + 
+  geom_point(size=2)
+
+ggsave("forewing_linear_regression.pdf", width =4 , height = 4, path = "figures/")
+
+#ANCOVA: hindwing
+hindwing_length.model <- lm(log(mean_hindwing_length) ~ log(dragon.Body_length) + dragon.Sex + dragon.Sex:log(dragon.Body_length), data = length_new_dragon)
+anova(hindwing_length.model)
+
+#Figure: hindwing
+b <- ggplot(aes(x = log(dragon.Body_length), y = log(mean_hindwing_length), color =  dragon.Sex, shape = dragon.Sex), data =length_new_dragon) + geom_smooth(method='lm', formula = y~x, se = TRUE) +
+  scale_color_manual(values=c("#84B6BA", "#4880b8")) + 
+  labs(x = "Body length", y = "Hind wing length") +
+  scale_size_manual(values=c(1, 1.5)) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) + 
+  guides(fill = TRUE) +
+  theme_minimal(8)+ geom_quasirandom(cex=1) +
+  scale_linetype_manual(values = c("51", "solid")) +
+  theme(legend.position="") + theme(text = element_text(size=14))
+
+b + theme(axis.title.x = element_text(margin = margin(t = .2, unit = "in"))) + 
+  theme(axis.title.y = element_text(margin = margin(r = .2, unit = "in"))) + 
+  geom_point(size=2)
+ 
+
+ggsave("hindwing_linear_regression.pdf", width = 4, height = 4, path = "figures/")
+
+#independent t-test for body length 
+t.test(dragon.Body_length ~ dragon.Sex, data = new_dragon)
+
+ggplot(length_new_dragon, aes(x = dragon.Sex, y = log(dragon.Body_length), fill = dragon.Sex)) + 
+  geom_violin(trim = FALSE, alpha = 1) +
+  scale_fill_manual(values=c("#84B6BA", "#4880b8")) +
+  labs(x = "", y = "Body length") +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) + 
+  guides(fill = FALSE) +
+  theme_minimal() + 
+  stat_summary(fun.data = "mean_sdl", geom = "pointrange", width=0.04, colour = "red") + geom_quasirandom(cex=1)+ theme(axis.title.x = element_text(margin = margin(t = .2, unit = "in"))) + 
+  theme(axis.title.y = element_text(margin = margin(r = .2, unit = "in")))
+
+ggsave("body_length.jpg", width = 4, height = 4, path = "figures/")
+```
+
+```{r}
+#body length: mean and SD
+mean_bod_length <- length_new_dragon[, (mean=mean(dragon.Body_length)), by=dragon.Sex]
+mean_bod_length
+
+sd_bod_length <- length_new_dragon[, (sd=sd(dragon.Body_length)), by=dragon.Sex]
+sd_bod_length
+
+#fore wing: mean and SD
+mean_fw_length <- length_new_dragon[, (mean=mean(mean_forewing_length)), by=dragon.Sex]
+mean_fw_length
+
+sd_fw_length <- length_new_dragon[, (sd=sd(mean_forewing_length)), by=dragon.Sex]
+sd_fw_length
+
+#hindwing: mean and SD
+mean_hw_length <- length_new_dragon[, (mean=mean(mean_hindwing_length)), by=dragon.Sex]
+mean_hw_length
+
+sd_hw_length <- length_new_dragon[, (sd=sd(mean_hindwing_length)), by=dragon.Sex]
+sd_hw_length
+
+#fore wing area: mean and SD
+mean_forewingarea <- area_dragon[, (mean=mean(mean_forewing_area)), by=dragon.Sex]
+mean_forewingarea
+
+sd_forewingarea <- area_dragon[, (sd=sd(mean_forewing_area)), by=dragon.Sex]
+sd_forewingarea
+
+#hind wing area: mean and SD
+mean_hindwingarea <- area_dragon[, (mean=mean(mean_hindwing_area)), by=dragon.Sex]
+mean_hindwingarea
+
+sd_hindwingarea <- area_dragon[, (sd=sd(mean_hindwing_area)), by=dragon.Sex]
+sd_hindwingarea
+
+#wing loading
+mean_wing_loading <- wing_loading[, (mean=mean(wing_loading_estimated_weight)), by=dragon.Sex]
+mean_wing_loading
+
+sd_wing_loading <- wing_loading[, (sd=sd(wing_loading_estimated_weight)), by=dragon.Sex]
+sd_wing_loading
+```
+
+
+#test for normality
+```{r}
+shapiro.test(length_new_dragon$dragon.Body_length[length_new_dragon$dragon.Sex == 'Male'])
+shapiro.test(length_new_dragon$dragon.Body_length[length_new_dragon$dragon.Sex == 'Female'])
+
+shapiro.test(length_new_dragon$forewing_length_residuals[length_new_dragon$dragon.Sex == 'Male'])
+shapiro.test(length_new_dragon$forewing_length_residuals[length_new_dragon$dragon.Sex == 'Female'])
+
+shapiro.test(length_new_dragon$hindwing_length_residuals[length_new_dragon$dragon.Sex == 'Male'])
+shapiro.test(length_new_dragon$hindwing_length_residuals[length_new_dragon$dragon.Sex == 'Female'])
+
+shapiro.test(area_dragon$forewing_area_residuals[area_dragon$dragon.Sex == 'Male'])
+shapiro.test(area_dragon$forewing_area_residuals[area_dragon$dragon.Sex == 'Female'])
+
+shapiro.test(area_dragon$hindwing_area_residuals[area_dragon$dragon.Sex == 'Male'])
+shapiro.test(area_dragon$hindwing_area_residuals[area_dragon$dragon.Sex == 'Female'])
+
+```
+
